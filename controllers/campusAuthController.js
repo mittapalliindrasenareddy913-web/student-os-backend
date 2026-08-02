@@ -37,33 +37,27 @@ const campusLogin = async (req, res) => {
       return res.status(400).json({ message: 'All login credentials are required.' });
     }
 
-    // Super Admin check (Bypasses college validations)
+    // Super Admin check (Bypasses college validations ONLY for super_admin portal or super_admin account)
     const normalizedId = emailOrEmployeeId.trim().toLowerCase();
     if (
       portalType === 'super-admin' ||
-      portalType === 'admin' ||
-      normalizedId === 'indra0408' ||
-      normalizedId === 'mittapalliindrasenareddy913@gmail.com' ||
-      normalizedId === 'superadmin' ||
-      normalizedId === 'superadmin001'
+      (normalizedId === 'indra0408' && (password === 'ISR@MB@d' || portalType === 'admin'))
     ) {
       const adminUser = await User.findOne({
         $or: [
-          { username: normalizedId },
-          { email: normalizedId },
           { username: 'indra0408' },
-          { email: 'mittapalliindrasenareddy913@gmail.com' },
+          { email: 'indra0408@campusos.in' },
           { role: 'super_admin' }
         ]
       });
 
-      if (!adminUser) return res.status(400).json({ message: 'Invalid credentials.' });
-
-      const isMatch = await bcrypt.compare(password, adminUser.password);
-      if (!isMatch) return res.status(400).json({ message: 'Invalid credentials.' });
-
-      const { accessToken, refreshToken } = await generateTokens(adminUser._id, 'super_admin', adminUser.collegeCode || '', '');
-      return res.status(200).json({ token: accessToken, accessToken, refreshToken, role: 'super_admin', fullName: adminUser.fullName || 'Super Admin', collegeCode: adminUser.collegeCode || '', collegeName: 'Super Admin System' });
+      if (adminUser) {
+        const isMatch = await bcrypt.compare(password, adminUser.password);
+        if (isMatch) {
+          const { accessToken, refreshToken } = await generateTokens(adminUser._id, 'super_admin', adminUser.collegeCode || '', '');
+          return res.status(200).json({ token: accessToken, accessToken, refreshToken, role: 'super_admin', fullName: adminUser.fullName || 'Super Admin', collegeCode: adminUser.collegeCode || '', collegeName: 'Super Admin System' });
+        }
+      }
     }
 
     if (!collegeCode) {
@@ -94,9 +88,11 @@ const campusLogin = async (req, res) => {
 
     let user = await User.findOne(query);
 
-    // Fallback role alias lookup if input is simply 'hod', 'hod_cse', 'faculty', 'faculty_cse'
+    // Fallback role alias lookup if input is simply 'principal', 'hod', 'faculty'
     if (!user) {
-      if (inputLower.includes('hod') && (portalType === 'hod' || portalType === 'admin')) {
+      if ((inputLower.includes('principal') || inputLower === 'principal') && portalType === 'principal') {
+        user = await User.findOne({ collegeCode: collegeCode.toUpperCase(), role: 'principal' });
+      } else if (inputLower.includes('hod') && (portalType === 'hod' || portalType === 'admin')) {
         user = await User.findOne({ collegeCode: collegeCode.toUpperCase(), role: 'hod' });
       } else if (inputLower.includes('faculty') && (portalType === 'faculty' || portalType === 'admin')) {
         user = await User.findOne({ collegeCode: collegeCode.toUpperCase(), role: 'faculty' });
