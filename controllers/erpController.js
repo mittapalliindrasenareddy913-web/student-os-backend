@@ -342,21 +342,31 @@ const parseImportFile = async (req, res) => {
     const origName = (req.file.originalname || '').toLowerCase();
     let records = [];
 
-    if (origName.endsWith('.csv')) {
-      try {
-        const workbook = xlsx.read(req.file.buffer, { type: 'buffer', raw: false });
-        const sheetName = workbook.SheetNames[0];
-        records = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '' });
-      } catch (csvErr) {
-        const csvStr = req.file.buffer.toString('utf-8');
-        const workbook = xlsx.read(csvStr, { type: 'string', raw: false });
-        const sheetName = workbook.SheetNames[0];
-        records = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '' });
+    try {
+      if (origName.endsWith('.csv')) {
+        try {
+          const workbook = xlsx.read(req.file.buffer, { type: 'buffer', raw: false });
+          const sheetName = workbook.SheetNames[0];
+          records = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '' });
+        } catch (csvErr) {
+          const csvStr = req.file.buffer.toString('utf-8');
+          const workbook = xlsx.read(csvStr, { type: 'string', raw: false });
+          const sheetName = workbook.SheetNames[0];
+          records = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '' });
+        }
+      } else {
+        try {
+          const workbook = xlsx.read(req.file.buffer, { type: 'buffer', cellDates: true });
+          const sheetName = workbook.SheetNames[0];
+          records = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '' });
+        } catch (excelErr) {
+          const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
+          const sheetName = workbook.SheetNames[0];
+          records = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '' });
+        }
       }
-    } else {
-      const workbook = xlsx.read(req.file.buffer, { type: 'buffer', cellDates: true });
-      const sheetName = workbook.SheetNames[0];
-      records = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '' });
+    } catch (readErr) {
+      return res.status(400).json({ message: 'Unable to parse spreadsheet file: ' + readErr.message });
     }
 
     if (!records || records.length === 0) {
