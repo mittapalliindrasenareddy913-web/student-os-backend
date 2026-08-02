@@ -4,56 +4,51 @@ const { protect } = require('../middleware/authMiddleware');
 const requireRole = require('../middleware/requireRole');
 const {
   getSaaSStats,
+  registerFullCollege,
   addMasterCollege,
   getAllColleges,
+  getCollegeDetails,
   updateCollege,
   deleteCollege,
   toggleCollegeStatus,
-  createSubscriptionPlan,
-  getSubscriptionPlans,
-  createCollegeSubscription,
-  getInvoices,
   getAllPlatformUsers,
   resetUserPassword,
   toggleUserAccount,
-  assignUserRole,
+  deleteUserAccount,
   approveRequest,
   rejectRequest,
-  getSystemConfig,
-  saveSystemConfig,
-  broadcastNotification,
-  getStorageQuotaDetails,
-  updateStorageQuota,
-  getIntegrations,
-  updateIntegrations,
-  getSecurityMetrics,
-  searchAuditLogs,
-  triggerBackup,
-  getBackupHistory,
   getSupportTickets,
+  createSupportTicket,
+  replySupportTicket,
   resolveSupportTicket,
-  updateCollegeFeatures,
-  toggleMaintenanceMode,
-  updateProfile,
   getLeads,
+  createLead,
   updateLeadStatus,
-  registerFullCollege
+  addLeadNote,
+  deleteLead,
+  createSubscriptionPlan,
+  getSubscriptionPlans,
+  getInvoices,
+  searchAuditLogs,
+  updateProfile,
+  broadcastNotification
 } = require('../controllers/superAdminRequestController');
 
 router.use(protect);
 router.use(requireRole(['super_admin']));
 
-// Stats & SaaS analytics
+// Live Dashboard Stats
 router.get('/stats', getSaaSStats);
 
-// Onboarding requests
+// Onboarding requests approval
 router.post('/:requestId/approve', approveRequest);
 router.post('/:requestId/reject', rejectRequest);
 
-// College Management CRUD
-router.post('/colleges', addMasterCollege);
+// College Management CRUD & Details
 router.post('/colleges/register-full', registerFullCollege);
+router.post('/colleges', addMasterCollege);
 router.get('/colleges', getAllColleges);
+router.get('/colleges/details/:code', getCollegeDetails);
 router.put('/colleges/:id', updateCollege);
 router.delete('/colleges/:id', deleteCollege);
 router.post('/colleges/:code/suspend', toggleCollegeStatus);
@@ -61,55 +56,30 @@ router.post('/colleges/:code/suspend', toggleCollegeStatus);
 // Subscriptions & SaaS Billing
 router.post('/plans', createSubscriptionPlan);
 router.get('/plans', getSubscriptionPlans);
-router.post('/subscriptions', createCollegeSubscription);
 router.get('/invoices', getInvoices);
 
 // User & Role Management
 router.get('/users', getAllPlatformUsers);
 router.post('/users/:id/reset-password', resetUserPassword);
 router.post('/users/:id/toggle-status', toggleUserAccount);
-router.post('/users/:id/role', assignUserRole);
-
-// System Configuration
-router.get('/config', getSystemConfig);
-router.post('/config', saveSystemConfig);
-
-// Global Broadcasts
-router.post('/broadcast', broadcastNotification);
-
-// Storage Management
-router.get('/storage', getStorageQuotaDetails);
-router.post('/storage/quota', updateStorageQuota);
-
-// Integrations Settings
-router.get('/integrations', getIntegrations);
-router.post('/integrations', updateIntegrations);
-
-// Security Center
-router.get('/security', getSecurityMetrics);
-
-// Advanced Audit Search
-router.get('/audit-logs', searchAuditLogs);
-
-// Backups & DR
-router.post('/backup', triggerBackup);
-router.get('/backup', getBackupHistory);
+router.delete('/users/:id', deleteUserAccount);
 
 // Support Desk
 router.get('/support/tickets', getSupportTickets);
+router.post('/support/tickets', createSupportTicket);
+router.post('/support/tickets/:id/reply', replySupportTicket);
 router.post('/support/tickets/:id/resolve', resolveSupportTicket);
 
-// Feature Toggles Rollouts
-router.post('/colleges/:code/features', updateCollegeFeatures);
-
-// Maintenance Mode
-router.post('/maintenance/toggle', toggleMaintenanceMode);
-
-// Profile
-router.put('/profile', updateProfile);
-
-// Leads
+// Onboarding Leads
 router.get('/leads', getLeads);
+router.post('/leads', createLead);
 router.put('/leads/:id/status', updateLeadStatus);
+router.post('/leads/:id/notes', addLeadNote);
+router.delete('/leads/:id', deleteLead);
+
+// Audit Logs & Notifications
+router.get('/audit-logs', searchAuditLogs);
+router.post('/broadcast', broadcastNotification);
+router.put('/profile', updateProfile);
 
 module.exports = router;

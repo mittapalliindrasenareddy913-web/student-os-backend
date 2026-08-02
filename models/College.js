@@ -2,26 +2,33 @@ const mongoose = require('mongoose');
 
 const CollegeSchema = new mongoose.Schema(
   {
-    collegeCode: { type: String, required: true, unique: true, uppercase: true, trim: true },
-    name:        { type: String, required: true, trim: true },
-    address:     { type: String, default: '' },
-    university:  { type: String, default: '' },
-    state:       { type: String, default: '' },
-    district:    { type: String, default: '' },
-    city:        { type: String, default: '' },
-    logo:        { type: String, default: '' },
-    departments: [{ type: String, trim: true }],
+    institutionId: { type: String, unique: true, sparse: true, uppercase: true, trim: true },
+    collegeCode:   { type: String, required: true, unique: true, uppercase: true, trim: true },
+    name:          { type: String, required: true, trim: true },
+    address:       { type: String, default: '' },
+    university:    { type: String, default: '' },
+    country:       { type: String, default: 'India' },
+    state:         { type: String, default: '' },
+    district:      { type: String, default: '' },
+    city:          { type: String, default: '' },
+    pincode:       { type: String, default: '' },
+    officialEmail: { type: String, lowercase: true, trim: true, default: '' },
+    officialPhone: { type: String, trim: true, default: '' },
+    website:       { type: String, trim: true, default: '' },
+    logo:          { type: String, default: '' },
     
-    // Directory Search and AISHE Parameters
-    aisheCode:     { type: String, default: '' },
-    collegeType:   { type: String, default: 'Private' }, // Private, Government, Autonomous
-    aicteApproved: { type: Boolean, default: true },
-    ugcApproved:   { type: Boolean, default: true },
-    naacGrade:     { type: String, default: 'A' },
-    nbaAccredited: { type: Boolean, default: false },
-    verifiedBadge: { type: Boolean, default: false },
+    // Principal Contact
+    principalName:  { type: String, default: '' },
+    principalEmail: { type: String, lowercase: true, trim: true, default: '' },
+    principalPhone: { type: String, trim: true, default: '' },
 
-    // ERP configuration items
+    // Limits & Resource Allocation
+    maxStudents:    { type: Number, default: 1000 },
+    maxFaculty:     { type: Number, default: 100 },
+    maxDepartments: { type: Number, default: 10 },
+    subscriptionPlan: { type: String, enum: ['Free Trial', 'Basic', 'Professional', 'Enterprise'], default: 'Professional' },
+
+    departments:   [{ type: String, trim: true }],
     courses:       [{ type: String, trim: true }],
     programs:      [{ type: String, trim: true }],
     branches:      [{ type: String, trim: true }],
@@ -30,58 +37,59 @@ const CollegeSchema = new mongoose.Schema(
     semesters:     [{ type: String, trim: true }],
     regulations:   [{ type: String, trim: true }],
 
-    // Extended Setup items
-    workingDays:      [{ type: String, default: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] }],
-    timings:          [{ type: String, default: ['09:00-10:00', '10:00-11:00', '11:15-12:15', '12:15-01:15', '02:00-03:00', '03:00-04:00'] }],
-    holidays:         [{ date: Date, description: String }],
-    gradingSystem:    [{ grade: String, points: Number }],
-    attendanceRules:  {
-      minPercentage:  { type: Number, default: 75 }
-    },
-    timezone:         { type: String, default: 'Asia/Kolkata' },
-    language:         { type: String, default: 'en' },
-    dateFormat:       { type: String, default: 'DD/MM/YYYY' },
+    // Directory Search and Accreditation Parameters
+    aisheCode:     { type: String, default: '' },
+    collegeType:   { type: String, default: 'Private' },
+    aicteApproved: { type: Boolean, default: true },
+    ugcApproved:   { type: Boolean, default: true },
+    naacGrade:     { type: String, default: 'A' },
+    nbaAccredited: { type: Boolean, default: false },
+    verifiedBadge: { type: Boolean, default: true },
 
-    status:      { 
+    workingDays:   [{ type: String, default: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] }],
+    timings:       [{ type: String, default: ['09:00-10:00', '10:00-11:00', '11:15-12:15', '12:15-01:15', '02:00-03:00', '03:00-04:00'] }],
+    attendanceRules: {
+      minPercentage: { type: Number, default: 75 }
+    },
+    timezone:      { type: String, default: 'Asia/Kolkata' },
+    dateFormat:    { type: String, default: 'DD/MM/YYYY' },
+
+    status: { 
       type: String, 
       enum: ['verified', 'pending_verification', 'pending_activation', 'rejected', 'suspended', 'active'], 
-      default: 'pending_verification' 
+      default: 'active' 
     },
-    activatedAt: { type: Date, default: null },
+    activatedAt: { type: Date, default: Date.now },
     isDeleted:   { type: Boolean, default: false },
     
     // Enterprise SaaS Feature Controls
     features: {
-      studentOs:   { type: Boolean, default: true },
-      community:   { type: Boolean, default: true },
-      attendance:  { type: Boolean, default: true },
-      aiFeatures:  { type: Boolean, default: true },
-      library:     { type: Boolean, default: true },
-      hostel:      { type: Boolean, default: true },
-      transport:   { type: Boolean, default: true },
-      placement:   { type: Boolean, default: true },
-      alumni:      { type: Boolean, default: true }
+      studentOs:  { type: Boolean, default: true },
+      community:  { type: Boolean, default: true },
+      attendance: { type: Boolean, default: true },
+      aiFeatures: { type: Boolean, default: true },
+      library:    { type: Boolean, default: true },
+      hostel:     { type: Boolean, default: true },
+      transport:  { type: Boolean, default: true },
+      placement:  { type: Boolean, default: true },
+      alumni:     { type: Boolean, default: true }
     },
-    betaEnrollment: { type: Boolean, default: false },
 
     subscription: {
-      plan:         { type: String, enum: ['Free Trial', 'Basic', 'Professional', 'Enterprise'], default: 'Free Trial' },
+      plan:         { type: String, default: 'Professional' },
       startDate:    { type: Date, default: Date.now },
-      expiryDate:   { type: Date, default: () => new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) }, // 30 days default
-      storageLimit: { type: Number, default: 5 * 1024 * 1024 * 1024 }, // 5GB default
-      studentLimit: { type: Number, default: 1000 } // 1000 students default
+      expiryDate:   { type: Date, default: () => new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) },
+      storageLimit: { type: Number, default: 50 * 1024 * 1024 * 1024 }, // 50GB
+      studentLimit: { type: Number, default: 2000 }
     }
   },
   { timestamps: true }
 );
 
-// Optimize performance with single-field indexes for filtering
 CollegeSchema.index({ name: 1 });
-CollegeSchema.index({ city: 1 });
-CollegeSchema.index({ district: 1 });
+CollegeSchema.index({ collegeCode: 1 });
+CollegeSchema.index({ institutionId: 1 });
+CollegeSchema.index({ status: 1 });
 CollegeSchema.index({ state: 1 });
-CollegeSchema.index({ university: 1 });
-CollegeSchema.index({ collegeType: 1 });
-CollegeSchema.index({ aisheCode: 1 });
 
 module.exports = mongoose.models.College || mongoose.model('College', CollegeSchema);
