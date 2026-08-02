@@ -5,7 +5,8 @@ const requireRole = require('../middleware/requireRole');
 const tenantIsolation = require('../middleware/tenantIsolation');
 const multer = require('multer');
 const upload = multer({
-  limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024 } // 25MB limit
 });
 const {
   addSubject,

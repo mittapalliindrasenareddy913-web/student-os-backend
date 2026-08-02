@@ -335,25 +335,39 @@ const sendDirectFcm = async (role, collegeCode, title, body) => {
 // 1. Parse File Endpoint (Excel/CSV to JSON)
 const parseImportFile = async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ message: 'No file uploaded.' });
+    if (!req.file || !req.file.buffer) {
+      return res.status(400).json({ message: 'No file uploaded or file buffer empty.' });
     }
 
-    // Verify file type extension
-    const origName = req.file.originalname.toLowerCase();
-    if (!origName.endsWith('.xlsx') && !origName.endsWith('.csv')) {
-      return res.status(400).json({ message: 'Unsupported file format. Please upload Excel (.xlsx) or CSV (.csv) files.' });
+    const origName = (req.file.originalname || '').toLowerCase();
+    let records = [];
+
+    if (origName.endsWith('.csv')) {
+      try {
+        const workbook = xlsx.read(req.file.buffer, { type: 'buffer', raw: false });
+        const sheetName = workbook.SheetNames[0];
+        records = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '' });
+      } catch (csvErr) {
+        const csvStr = req.file.buffer.toString('utf-8');
+        const workbook = xlsx.read(csvStr, { type: 'string', raw: false });
+        const sheetName = workbook.SheetNames[0];
+        records = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '' });
+      }
+    } else {
+      const workbook = xlsx.read(req.file.buffer, { type: 'buffer', cellDates: true });
+      const sheetName = workbook.SheetNames[0];
+      records = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '' });
     }
 
-    const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
-    const sheetName = workbook.SheetNames[0];
-    const sheet = workbook.Sheets[sheetName];
-    
-    // Parse to JSON with default empty string for empty cells
-    const records = xlsx.utils.sheet_to_json(sheet, { defval: '' });
-    
-    if (records.length === 0) {
+    if (!records || records.length === 0) {
       return res.status(400).json({ message: 'The uploaded file contains no data rows.' });
+    }
+
+    // Filter out empty rows
+    records = records.filter(r => r && Object.keys(r).some(k => String(r[k]).trim() !== ''));
+
+    if (records.length === 0) {
+      return res.status(400).json({ message: 'The uploaded file contains no valid data rows.' });
     }
 
     // Extract headers (keys from first parsed row)
@@ -367,7 +381,8 @@ const parseImportFile = async (req, res) => {
       records
     });
   } catch (err) {
-    res.status(500).json({ message: 'Error parsing file: ' + err.message });
+    console.error('Error parsing file:', err);
+    res.status(400).json({ message: 'Error parsing file: ' + err.message });
   }
 };
 
