@@ -661,8 +661,8 @@ const runValidationPipeline = async (collegeCode, importType, records) => {
     const rowReasons = [];
     const rowWarnings = [];
 
-    const email = (record.Email || record.email || record['Email Address'] || '').trim().toLowerCase();
-    const phone = (record.Phone || record.Mobile || record['Mobile Number'] || '').trim();
+    const email = (record.Email || record.email || record['Email Address'] || record['Parent Email'] || '').trim().toLowerCase();
+    const phone = (record.Phone || record.phone || record.Mobile || record.mobile || record['Mobile Number'] || record['Student Mobile'] || record.studentMobile || '').trim();
 
     // Format Validations
     if (email) {
@@ -685,12 +685,12 @@ const runValidationPipeline = async (collegeCode, importType, records) => {
     }
 
     if (importType === 'students') {
-      const rollNumber = (record['Roll Number'] || record.rollNumber || '').trim().toUpperCase();
-      const admissionNumber = (record['Admission Number'] || record.admissionNumber || '').trim().toUpperCase();
-      const name = record['Student Name'] || record.studentName || record.fullName || '';
-      const dept = (record.Department || record.department || '').trim().toUpperCase();
-      const sem = parseInt(record.Semester || record.semester);
-      const parentPhone = (record['Parent Mobile'] || record.parentMobile || '').trim();
+      const rollNumber = (record['Roll Number'] || record.rollNumber || record['Roll No'] || record.rollNo || '').trim().toUpperCase();
+      const admissionNumber = (record['Admission Number'] || record.admissionNumber || record['Admission No'] || record.admissionNo || (rollNumber ? `ADM-${rollNumber}` : '')).trim().toUpperCase();
+      const name = record['Student Name'] || record.studentName || record.fullName || record.Name || record.name || '';
+      const dept = (record.Department || record.department || record.Branch || record.branch || 'ECE').trim().toUpperCase();
+      const sem = parseInt(record.Semester || record.semester || record.Sem || record.sem || 1);
+      const parentPhone = (record['Parent Mobile'] || record.parentMobile || record['Parent Phone'] || record.parentPhone || '').trim();
 
       if (!rollNumber) rowReasons.push('Roll Number is required.');
       else {
@@ -936,16 +936,16 @@ const processImportRow = async (collegeCode, importType, record, strategy, creat
     return { status: 'success' };
 
   } else if (importType === 'students') {
-    const rollNumber = (record['Roll Number'] || record.rollNumber || '').trim().toUpperCase();
-    const admissionNumber = (record['Admission Number'] || record.admissionNumber || '').trim().toUpperCase();
-    const name = record['Student Name'] || record.studentName || record.fullName || '';
-    const dept = (record.Department || record.department || '').trim().toUpperCase();
-    const sem = parseInt(record.Semester || record.semester) || 1;
-    const sec = (record.Section || record.section || 'A').trim().toUpperCase();
+    const rollNumber = (record['Roll Number'] || record.rollNumber || record['Roll No'] || record.rollNo || '').trim().toUpperCase();
+    const admissionNumber = (record['Admission Number'] || record.admissionNumber || record['Admission No'] || record.admissionNo || (rollNumber ? `ADM-${rollNumber}` : '')).trim().toUpperCase();
+    const name = record['Student Name'] || record.studentName || record.fullName || record.Name || record.name || '';
+    const dept = (record.Department || record.department || record.Branch || record.branch || 'ECE').trim().toUpperCase();
+    const sem = parseInt(record.Semester || record.semester || record.Sem || record.sem) || 1;
+    const sec = (record.Section || record.section || record.Sec || record.sec || 'A').trim().toUpperCase();
     const bloodGroup = record['Blood Group'] || record.bloodGroup || '';
     const address = record.Address || record.address || '';
-    const parentName = record['Parent Name'] || record.parentName || '';
-    const parentPhone = (record['Parent Mobile'] || record.parentMobile || '').trim();
+    const parentName = record['Parent Name'] || record.parentName || record['Father Name'] || record.fatherName || '';
+    const parentPhone = (record['Parent Mobile'] || record.parentMobile || record['Parent Phone'] || record.parentPhone || '').trim();
 
     // Map Department Names
     let resolvedDept = dept;
