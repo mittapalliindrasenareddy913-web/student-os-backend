@@ -317,6 +317,38 @@ const updateCollege = async (req, res) => {
   }
 };
 
+const getCollegeDeleteCounts = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const col = await College.findById(id);
+    if (!col) return res.status(404).json({ message: 'College not found.' });
+
+    const code = col.collegeCode.toUpperCase();
+    const deptsCount = await Department.countDocuments({ collegeCode: code });
+    const facultyCount = await User.countDocuments({ collegeCode: code, role: 'faculty' });
+    const studentsCount = await User.countDocuments({ collegeCode: code, role: 'student' });
+    const hodsCount = await User.countDocuments({ collegeCode: code, role: 'hod' });
+    const principalsCount = await User.countDocuments({ collegeCode: code, role: 'principal' });
+    const totalUsersCount = await User.countDocuments({ collegeCode: code });
+    const auditLogsCount = await AuditLog.countDocuments({ collegeCode: code });
+
+    res.status(200).json({
+      college: col,
+      counts: {
+        departments: deptsCount,
+        faculty: facultyCount,
+        students: studentsCount,
+        hods: hodsCount,
+        principals: principalsCount,
+        totalUsers: totalUsersCount,
+        auditLogs: auditLogsCount
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
 const deleteCollege = async (req, res) => {
   try {
     const { id } = req.params;
@@ -327,7 +359,37 @@ const deleteCollege = async (req, res) => {
     await col.save();
 
     await logAction(req.user._id, 'super_admin', col.collegeCode, '', `SOFT_DELETED_COLLEGE: ${col.collegeCode}`, req);
-    res.status(200).json({ message: `College '${col.name}' removed.` });
+    res.status(200).json({ message: `College '${col.name}' soft deleted.` });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+const permanentDeleteCollege = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const col = await College.findById(id);
+    if (!col) return res.status(404).json({ message: 'College not found.' });
+
+    const code = col.collegeCode.toUpperCase();
+
+    // 1. Delete all users belonging to this college tenant
+    await User.deleteMany({ collegeCode: code });
+    // 2. Delete all departments of this college
+    await Department.deleteMany({ collegeCode: code });
+    // 3. Delete subscriptions & invoices
+    await Subscription.deleteMany({ collegeCode: code });
+    await Invoice.deleteMany({ collegeCode: code });
+    // 4. Delete support tickets
+    await SupportTicket.deleteMany({ collegeCode: code });
+    // 5. Delete audit logs
+    await AuditLog.deleteMany({ collegeCode: code });
+    // 6. Delete college document itself
+    await College.findByIdAndDelete(id);
+
+    await logAction(req.user._id, 'super_admin', code, '', `PERMANENTLY_DELETED_COLLEGE: ${code} (${col.name})`, req);
+
+    res.status(200).json({ message: `College '${col.name}' and all associated tenant collections permanently deleted.` });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -682,8 +744,10 @@ module.exports = {
   addMasterCollege,
   getAllColleges,
   getCollegeDetails,
+  getCollegeDeleteCounts,
   updateCollege,
   deleteCollege,
+  permanentDeleteCollege,
   toggleCollegeStatus,
   getAllPlatformUsers,
   resetUserPassword,

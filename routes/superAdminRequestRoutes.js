@@ -8,8 +8,10 @@ const {
   addMasterCollege,
   getAllColleges,
   getCollegeDetails,
+  getCollegeDeleteCounts,
   updateCollege,
   deleteCollege,
+  permanentDeleteCollege,
   toggleCollegeStatus,
   getAllPlatformUsers,
   resetUserPassword,
@@ -49,8 +51,10 @@ router.post('/colleges/register-full', registerFullCollege);
 router.post('/colleges', addMasterCollege);
 router.get('/colleges', getAllColleges);
 router.get('/colleges/details/:code', getCollegeDetails);
+router.get('/colleges/:id/delete-counts', getCollegeDeleteCounts);
 router.put('/colleges/:id', updateCollege);
 router.delete('/colleges/:id', deleteCollege);
+router.delete('/colleges/:id/permanent', permanentDeleteCollege);
 router.post('/colleges/:code/suspend', toggleCollegeStatus);
 
 // Subscriptions & SaaS Billing
