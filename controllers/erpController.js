@@ -484,6 +484,17 @@ const executeImportData = async (req, res) => {
     version
   });
 
+  // Password hash cache to eliminate CPU bottleneck during bulk import
+  const passwordHashCache = new Map();
+  const getHashedPassword = async (text) => {
+    if (!passwordHashCache.has(text)) {
+      const salt = await bcrypt.genSalt(10);
+      const hash = await bcrypt.hash(text, salt);
+      passwordHashCache.set(text, hash);
+    }
+    return passwordHashCache.get(text);
+  };
+
   // Start background process loop
   setImmediate(async () => {
     const startTime = Date.now();
@@ -493,7 +504,7 @@ const executeImportData = async (req, res) => {
     let skippedCount = 0;
     const errorsList = [...validation.errors];
     const io = req.app.get('io');
-    const chunkSize = 200;
+    const chunkSize = 50;
 
     try {
       for (let i = 0; i < records.length; i += chunkSize) {
@@ -502,19 +513,18 @@ const executeImportData = async (req, res) => {
 
         const chunk = records.slice(i, i + chunkSize);
         
-        for (let j = 0; j < chunk.length; j++) {
-          const rowRecord = chunk[j];
+        await Promise.all(chunk.map(async (rowRecord, j) => {
           const rowNum = i + j + 2;
 
           // Check if this row is already marked as validation error
           const rowHasError = validation.errors.some(e => e.row === rowNum);
           if (rowHasError) {
             failedCount++;
-            continue;
+            return;
           }
 
           try {
-            const result = await processImportRow(collegeCode, importType, rowRecord, duplicateStrategy, createdIds);
+            const result = await processImportRow(collegeCode, importType, rowRecord, duplicateStrategy, createdIds, getHashedPassword);
             if (result.status === 'success') {
               successCount++;
             } else if (result.status === 'skipped') {
@@ -527,13 +537,13 @@ const executeImportData = async (req, res) => {
             failedCount++;
             errorsList.push({ row: rowNum, rowValue: rowRecord, reasons: [rowErr.message] });
           }
-        }
+        }));
 
         // Emit Socket.IO progress to principal room
         const elapsedSecs = (Date.now() - startTime) / 1000;
         const processed = Math.min(i + chunkSize, records.length);
-        const recordsPerSecond = Math.round(processed / (elapsedSecs || 1));
-        const etaSeconds = Math.round((records.length - processed) / (recordsPerSecond || 1));
+        const recordsPerSecond = Math.round(processed / (elapsedSecs || 0.1));
+        const etaSeconds = Math.max(0, Math.round((records.length - processed) / (recordsPerSecond || 1)));
         const progressPercent = Math.round((processed / records.length) * 100);
 
         if (io) {
@@ -629,6 +639,22 @@ const runValidationPipeline = async (collegeCode, importType, records) => {
   const departmentCodes = new Set();
   const subjectCodes = new Set();
 
+  // Bulk pre-fetch existing records from DB in parallel (O(1) lookups)
+  const [dbUsers, dbStudents, dbDepts, dbSubjects] = await Promise.all([
+    User.find({ collegeCode }).select('username employeeId email').lean(),
+    StudentRecord.find({ collegeCode }).select('rollNumber admissionNumber').lean(),
+    Department.find({ collegeCode }).select('code').lean(),
+    Subject.find({ collegeCode }).select('subjectCode').lean()
+  ]);
+
+  const dbUsernamesSet = new Set(dbUsers.map(u => (u.username || '').toLowerCase()));
+  const dbEmpIdsSet = new Set(dbUsers.map(u => (u.employeeId || '').toUpperCase()));
+  const dbEmailsSet = new Set(dbUsers.map(u => (u.email || '').toLowerCase()));
+  const dbRollNumbersSet = new Set(dbStudents.map(s => (s.rollNumber || '').toUpperCase()));
+  const dbAdmissionNumbersSet = new Set(dbStudents.map(s => (s.admissionNumber || '').toUpperCase()));
+  const dbDeptCodesSet = new Set(dbDepts.map(d => (d.code || '').toUpperCase()));
+  const dbSubjectCodesSet = new Set(dbSubjects.map(s => (s.subjectCode || '').toUpperCase()));
+
   for (let i = 0; i < records.length; i++) {
     const rowNum = i + 2;
     const record = records[i];
@@ -644,8 +670,8 @@ const runValidationPipeline = async (collegeCode, importType, records) => {
       if (!emailRegex.test(email)) {
         rowReasons.push(`Invalid email format '${email}'.`);
       } else {
-        if (emails.has(email)) {
-          duplicates.push({ row: rowNum, column: 'Email', value: email });
+        if (emails.has(email) || dbEmailsSet.has(email)) {
+          duplicates.push({ row: rowNum, column: 'Email', value: email, inDb: dbEmailsSet.has(email) });
         } else {
           emails.add(email);
         }
@@ -668,22 +694,17 @@ const runValidationPipeline = async (collegeCode, importType, records) => {
 
       if (!rollNumber) rowReasons.push('Roll Number is required.');
       else {
-        if (rollNumbers.has(rollNumber)) {
-          duplicates.push({ row: rowNum, column: 'Roll Number', value: rollNumber });
+        if (rollNumbers.has(rollNumber) || dbRollNumbersSet.has(rollNumber) || dbUsernamesSet.has(rollNumber.toLowerCase())) {
+          duplicates.push({ row: rowNum, column: 'Roll Number', value: rollNumber, inDb: dbRollNumbersSet.has(rollNumber) || dbUsernamesSet.has(rollNumber.toLowerCase()) });
         } else {
           rollNumbers.add(rollNumber);
-          // Check DB collision
-          const exists = await User.findOne({ collegeCode, username: rollNumber.toLowerCase() });
-          if (exists) {
-            duplicates.push({ row: rowNum, column: 'Roll Number', value: rollNumber, inDb: true });
-          }
         }
       }
 
       if (!admissionNumber) rowReasons.push('Admission Number is required.');
       else {
-        if (admissionNumbers.has(admissionNumber)) {
-          duplicates.push({ row: rowNum, column: 'Admission Number', value: admissionNumber });
+        if (admissionNumbers.has(admissionNumber) || dbAdmissionNumbersSet.has(admissionNumber)) {
+          duplicates.push({ row: rowNum, column: 'Admission Number', value: admissionNumber, inDb: dbAdmissionNumbersSet.has(admissionNumber) });
         } else {
           admissionNumbers.add(admissionNumber);
         }
@@ -703,14 +724,10 @@ const runValidationPipeline = async (collegeCode, importType, records) => {
 
       if (!empId) rowReasons.push('Employee ID is required.');
       else {
-        if (employeeIds.has(empId)) {
-          duplicates.push({ row: rowNum, column: 'Employee ID', value: empId });
+        if (employeeIds.has(empId) || dbEmpIdsSet.has(empId)) {
+          duplicates.push({ row: rowNum, column: 'Employee ID', value: empId, inDb: dbEmpIdsSet.has(empId) });
         } else {
           employeeIds.add(empId);
-          const exists = await User.findOne({ collegeCode, employeeId: empId });
-          if (exists) {
-            duplicates.push({ row: rowNum, column: 'Employee ID', value: empId, inDb: true });
-          }
         }
       }
 
@@ -724,14 +741,10 @@ const runValidationPipeline = async (collegeCode, importType, records) => {
       if (!name) rowReasons.push('Department Name is required.');
       if (!code) rowReasons.push('Department Code is required.');
       else {
-        if (departmentCodes.has(code)) {
-          duplicates.push({ row: rowNum, column: 'Department Code', value: code });
+        if (departmentCodes.has(code) || dbDeptCodesSet.has(code)) {
+          duplicates.push({ row: rowNum, column: 'Department Code', value: code, inDb: dbDeptCodesSet.has(code) });
         } else {
           departmentCodes.add(code);
-          const exists = await Department.findOne({ collegeCode, code });
-          if (exists) {
-            duplicates.push({ row: rowNum, column: 'Department Code', value: code, inDb: true });
-          }
         }
       }
     } else if (importType === 'subjects') {
@@ -741,14 +754,10 @@ const runValidationPipeline = async (collegeCode, importType, records) => {
 
       if (!code) rowReasons.push('Subject Code is required.');
       else {
-        if (subjectCodes.has(code)) {
-          duplicates.push({ row: rowNum, column: 'Subject Code', value: code });
+        if (subjectCodes.has(code) || dbSubjectCodesSet.has(code)) {
+          duplicates.push({ row: rowNum, column: 'Subject Code', value: code, inDb: dbSubjectCodesSet.has(code) });
         } else {
           subjectCodes.add(code);
-          const exists = await Subject.findOne({ collegeCode, subjectCode: code });
-          if (exists) {
-            duplicates.push({ row: rowNum, column: 'Subject Code', value: code, inDb: true });
-          }
         }
       }
 
@@ -817,7 +826,7 @@ const runValidationPipeline = async (collegeCode, importType, records) => {
 };
 
 // 5. Row Processor (creates or updates records based on import type)
-const processImportRow = async (collegeCode, importType, record, strategy, createdIds) => {
+const processImportRow = async (collegeCode, importType, record, strategy, createdIds, getHashedPassword) => {
   // Normalize parameters
   const email = (record.Email || record.email || record['Email Address'] || '').trim().toLowerCase();
   const phone = (record.Phone || record.Mobile || record['Mobile Number'] || '').trim();
@@ -884,8 +893,7 @@ const processImportRow = async (collegeCode, importType, record, strategy, creat
       }
     }
 
-    const salt = await bcrypt.genSalt(10);
-    const defaultPassword = await bcrypt.hash(empId, salt);
+    const defaultPassword = getHashedPassword ? await getHashedPassword(empId) : await bcrypt.hash(empId, 10);
 
     if (!user) {
       user = await User.create({
@@ -962,8 +970,7 @@ const processImportRow = async (collegeCode, importType, record, strategy, creat
       }
     }
 
-    const salt = await bcrypt.genSalt(10);
-    const defaultPassword = await bcrypt.hash(rollNumber, salt);
+    const defaultPassword = getHashedPassword ? await getHashedPassword(rollNumber) : await bcrypt.hash(rollNumber, 10);
 
     if (!user) {
       user = await User.create({
