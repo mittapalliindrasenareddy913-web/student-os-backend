@@ -97,7 +97,7 @@ router.post('/library/register', requireRole(['principal', 'super_admin']), regi
 router.post('/library/issue', requireRole(['principal']), issueBook);
 
 // ERP Import routes
-router.post('/import/parse', requireRole(['principal']), upload.single('file'), parseImportFile);
+router.post('/import/parse', requireRole(['principal']), upload.any(), parseImportFile);
 router.post('/import/validate', requireRole(['principal']), validateImportData);
 router.post('/import', requireRole(['principal']), executeImportData);
 router.get('/import/history', requireRole(['principal']), getImportHistory);

@@ -335,18 +335,19 @@ const sendDirectFcm = async (role, collegeCode, title, body) => {
 // 1. Parse File Endpoint (Excel/CSV to JSON)
 const parseImportFile = async (req, res) => {
   try {
-    if (!req.file || !req.file.buffer) {
+    const uploadedFile = req.file || (req.files && req.files.length > 0 ? req.files[0] : null);
+    if (!uploadedFile || !uploadedFile.buffer) {
       return res.status(400).json({ message: 'No file uploaded or file buffer is empty.' });
     }
 
     let workbook;
     try {
-      workbook = xlsx.read(req.file.buffer, { cellDates: true, raw: false });
+      workbook = xlsx.read(uploadedFile.buffer, { cellDates: true, raw: false });
     } catch (e1) {
       try {
-        workbook = xlsx.read(req.file.buffer);
+        workbook = xlsx.read(uploadedFile.buffer);
       } catch (e2) {
-        const text = req.file.buffer.toString('utf-8');
+        const text = uploadedFile.buffer.toString('utf-8');
         workbook = xlsx.read(text, { type: 'string' });
       }
     }
@@ -373,7 +374,7 @@ const parseImportFile = async (req, res) => {
 
     return res.status(200).json({
       message: 'File parsed successfully.',
-      fileName: req.file.originalname,
+      fileName: uploadedFile.originalname,
       totalRecords: cleanRecords.length,
       headers,
       records: cleanRecords
@@ -410,7 +411,8 @@ const validateImportData = async (req, res) => {
 
 // 3. Execute Import (Chunk processor with Socket.IO status and Rollbacks)
 const executeImportData = async (req, res) => {
-  const { importType, records, fileName, duplicateStrategy, dryRun } = req.body;
+  try {
+    const { importType, records, fileName, duplicateStrategy, dryRun } = req.body;
   const collegeCode = req.user.collegeCode.toUpperCase();
   const principalId = req.user._id;
 
@@ -733,14 +735,15 @@ const executeImportData = async (req, res) => {
       // Notify rollback completion
       await sendDirectFcm('principal', collegeCode, '❌ ERP Import Failed', `Import version ${version} failed. Rollback executed successfully.`);
 
-      if (io) {
-        io.to(collegeCode).emit('erp_import_failed', { requestId, message: importErr.message });
-      }
     } finally {
       // Release lock
       importLocks[collegeCode] = false;
     }
-  });
+  } catch (outerErr) {
+    console.error('❌ executeImportData outer error:', outerErr);
+    importLocks[collegeCode] = false;
+    return res.status(500).json({ message: outerErr.message || 'Server error executing import.' });
+  }
 };
 
 // 4. Validation Pipeline helper
