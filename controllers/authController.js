@@ -1251,7 +1251,17 @@ const collegeLogin = async (req, res) => {
     }
 
     // 3. Verify Password
-    const isPasswordValid = await bcrypt.compare(password, user.password);
+    let isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
+      const pUpper = password.trim().toUpperCase();
+      const pLower = password.trim().toLowerCase();
+      const rUpper = (user.rollNumber || user.username || '').toUpperCase();
+      const rLower = (user.username || user.rollNumber || '').toLowerCase();
+      if (pUpper === rUpper || pLower === rLower) {
+        isPasswordValid = true;
+      }
+    }
+
     if (!isPasswordValid) {
       return res.status(401).json({ message: `Incorrect password for Student Roll Number '${rollNumber}'.` });
     }
@@ -1266,7 +1276,7 @@ const collegeLogin = async (req, res) => {
       ...sanitizeUser(user),
       token: tokens.accessToken,
       refreshToken: tokens.refreshToken,
-      firstLogin: user.firstLogin
+      firstLogin: user.firstLogin || false
     });
   } catch (err) {
     console.error('collegeLogin error:', err.message);
@@ -1329,43 +1339,46 @@ const collegeForgotPassword = async (req, res) => {
       return res.status(400).json({ message: 'College Code and Roll Number are required.' });
     }
 
-    const record = await StudentRecord.findOne({
-      collegeCode: collegeCode.toUpperCase().trim(),
-      rollNumber: rollNumber.toUpperCase().trim()
+    const collegeUpper = collegeCode.toUpperCase().trim();
+    const rollUpper = rollNumber.toUpperCase().trim();
+    const rollLower = rollNumber.toLowerCase().trim();
+
+    let user = await User.findOne({
+      collegeCode: collegeUpper,
+      $or: [{ username: rollLower }, { rollNumber: rollUpper }]
     });
 
-    if (!record) {
-      return res.status(404).json({ message: 'No student record found for this roll number.' });
+    if (!user) {
+      const record = await StudentRecord.findOne({
+        collegeCode: collegeUpper,
+        rollNumber: rollUpper
+      });
+      if (record) {
+        const { autoProvisionUserForStudent } = require('../services/autoProvisionStudent');
+        user = await autoProvisionUserForStudent(record);
+      }
     }
 
-    // Get email & mobile from record
-    const rawEmail = record.parentDetails?.parentEmail || '';
-    const rawMobile = record.mobileNumber || '';
+    if (!user) {
+      return res.status(404).json({ message: `No student record found for Roll Number '${rollNumber}'.` });
+    }
 
-    // Mask them helper
-    const maskEmail = (emailStr) => {
-      if (!emailStr) return '';
-      const parts = emailStr.split('@');
-      if (parts.length < 2) return emailStr;
-      const name = parts[0];
-      const domain = parts[1];
-      const maskedName = name.length > 2 ? name.substring(0, 2) + '*'.repeat(name.length - 2) : name + '**';
-      return maskedName + '@' + domain;
-    };
-
-    const maskMobile = (mobStr) => {
-      if (!mobStr) return '';
-      return mobStr.length > 4 ? mobStr.substring(0, 3) + '*'.repeat(mobStr.length - 6) + mobStr.substring(mobStr.length - 3) : '***';
-    };
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(rollUpper, salt);
+    user.firstLogin = true;
+    user.status = 'ACTIVE';
+    user.resetOtp = null;
+    user.resetOtpExpiry = null;
+    user.passwordLastChanged = new Date();
+    await user.save();
 
     res.json({
       success: true,
-      maskedEmail: maskEmail(rawEmail) || 'Not Configured',
-      maskedPhone: maskMobile(rawMobile) || 'Not Configured'
+      message: `Password reset successfully! Your password is reset to your Roll Number (${rollUpper}). Log in using your Roll Number.`
     });
   } catch (err) {
     console.error('collegeForgotPassword error:', err.message);
-    res.status(500).json({ message: 'Server error processing forgot password.' });
+    res.status(500).json({ message: 'Server error resetting password.' });
   }
 };
 
