@@ -1,0 +1,23 @@
+node_modules/
+.env
+
+# Production logs
+logs/
+*.log
+
+# Audit result files (dev artifacts)
+audit_results*.json
+remaining_audit_results*.json
+academic_audit_results*.json
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+
+# Docker
+.dockerignore
+
+# Build output
+dist/
+build/
