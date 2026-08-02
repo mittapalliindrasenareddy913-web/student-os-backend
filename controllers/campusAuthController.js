@@ -37,12 +37,9 @@ const campusLogin = async (req, res) => {
       return res.status(400).json({ message: 'All login credentials are required.' });
     }
 
-    // Super Admin check (Bypasses college validations ONLY for super_admin portal or super_admin account)
+    // Super Admin check (Bypasses college validations ONLY for super-admin portal or indra0408)
     const normalizedId = emailOrEmployeeId.trim().toLowerCase();
-    if (
-      portalType === 'super-admin' ||
-      (normalizedId === 'indra0408' && (password === 'ISR@MB@d' || portalType === 'admin'))
-    ) {
+    if (portalType === 'super-admin' || normalizedId === 'indra0408') {
       const adminUser = await User.findOne({
         $or: [
           { username: 'indra0408' },
