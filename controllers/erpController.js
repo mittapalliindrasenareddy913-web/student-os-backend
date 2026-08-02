@@ -477,13 +477,6 @@ const executeImportData = async (req, res) => {
     });
   }
 
-  // Immediately respond to the client with request parameters to prevent HTTP request timeout
-  res.status(202).json({
-    message: 'Import started. Processing in background...',
-    requestId,
-    version
-  });
-
   // Password hash cache to eliminate CPU bottleneck during bulk import
   const passwordHashCache = new Map();
   const getHashedPassword = async (text) => {
@@ -495,15 +488,13 @@ const executeImportData = async (req, res) => {
     return passwordHashCache.get(text);
   };
 
-  // Start background process loop
-  setImmediate(async () => {
-    const startTime = Date.now();
-    const createdIds = { users: [], departments: [], subjects: [], timetables: [] };
-    let successCount = 0;
-    let failedCount = 0;
-    let skippedCount = 0;
-    const errorsList = [...validation.errors];
-    const io = req.app.get('io');
+  const startTime = Date.now();
+  const createdIds = { users: [], departments: [], subjects: [], timetables: [] };
+  let successCount = 0;
+  let failedCount = 0;
+  let skippedCount = 0;
+  const errorsList = [...validation.errors];
+  const io = req.app.get('io');
     const chunkSize = 50;
 
     try {
@@ -688,6 +679,18 @@ const executeImportData = async (req, res) => {
       if (io) {
         io.to(collegeCode).emit('erp_import_completed', { requestId, successCount, failedCount, skippedCount });
       }
+
+      return res.status(200).json({
+        message: 'Import completed successfully.',
+        requestId,
+        version,
+        summary: {
+          total: records.length,
+          success: successCount,
+          failed: failedCount,
+          skipped: skippedCount
+        }
+      });
 
     } catch (importErr) {
       console.error('❌ background import error:', importErr.message);
