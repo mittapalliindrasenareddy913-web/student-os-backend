@@ -45,10 +45,20 @@ const {
   parseFileForTimetable,
   bulkSaveTimetables,
   clearAllTimetables,
-  clearSectionTimetable
+  clearSectionTimetable,
+  getAllCollegeFaculty,
+  getTimetableAnalytics,
+  restoreTimetableVersion
 } = require('../controllers/hodController');
 
 router.use(protect);
+
+// Faculty directory across all departments
+router.get('/faculty/all-departments', tenantIsolation, requireRole(['hod', 'faculty']), getAllCollegeFaculty);
+
+// Timetable Analytics & Versioning
+router.get('/timetable/analytics', tenantIsolation, requireRole(['hod', 'faculty', 'principal']), getTimetableAnalytics);
+router.post('/timetable/restore-version', tenantIsolation, requireRole(['hod', 'principal']), restoreTimetableVersion);
 
 // Timetable (Accessible by both HOD and Faculty)
 router.post('/timetable/parse-file', tenantIsolation, requireRole(['hod', 'faculty']), parseFileForTimetable);

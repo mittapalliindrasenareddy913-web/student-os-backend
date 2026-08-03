@@ -2,7 +2,7 @@ const express = require('express');
 const router  = express.Router();
 const multer  = require('multer');
 const { protect } = require('../middleware/authMiddleware');
-const { getTimetable, addSlot, updateSlot, deleteSlot, uploadTimetable } = require('../controllers/timetableController');
+const { getTimetable, addSlot, updateSlot, deleteSlot, uploadTimetable, getFacultySchedule } = require('../controllers/timetableController');
 
 // Multer memory storage configuration
 const upload = multer({
@@ -13,6 +13,7 @@ const upload = multer({
 router.use(protect);
 
 router.get('/', getTimetable);
+router.get('/faculty', getFacultySchedule);
 router.post('/upload', upload.single('file'), uploadTimetable);
 router.post('/slot', addSlot);
 router.put('/slot/:idx', updateSlot);

@@ -12,7 +12,7 @@ const {
 
 // All Super Admin routes are protected by JWT check and Super Admin role check
 router.use(protect);
-router.use(requireRole(['super_admin']));
+router.use(requireRole(['superadmin', 'super_admin']));
 
 router.post('/colleges', addMasterCollege);
 router.get('/colleges', getAllColleges);

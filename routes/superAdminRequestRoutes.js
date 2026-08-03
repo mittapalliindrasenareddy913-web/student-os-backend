@@ -37,7 +37,7 @@ const {
 } = require('../controllers/superAdminRequestController');
 
 router.use(protect);
-router.use(requireRole(['super_admin']));
+router.use(requireRole(['superadmin', 'super_admin']));
 
 // Live Dashboard Stats
 router.get('/stats', getSaaSStats);

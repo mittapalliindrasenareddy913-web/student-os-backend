@@ -401,4 +401,49 @@ Respond ONLY with a valid JSON array of objects. Do NOT wrap the JSON inside any
   }
 };
 
-module.exports = { getTimetable, addSlot, updateSlot, deleteSlot, uploadTimetable };
+// GET /api/timetable/faculty — Auto-generated schedule for faculty across all assigned departments
+const getFacultySchedule = async (req, res) => {
+  try {
+    const facultyUser = req.user;
+    const collegeCode = (facultyUser.collegeCode || '').toUpperCase();
+
+    const Timetable = require('../models/Timetable');
+    const officialTTs = await Timetable.find({ collegeCode });
+
+    const facultySlots = [];
+
+    for (const ott of officialTTs) {
+      for (const slot of ott.slots) {
+        const isMatched =
+          (slot.matchedFacultyId && slot.matchedFacultyId.toString() === facultyUser._id.toString()) ||
+          (slot.facultyId && slot.facultyId.toString() === facultyUser._id.toString()) ||
+          (slot.facultyName && slot.facultyName.toLowerCase().trim() === facultyUser.fullName.toLowerCase().trim());
+
+        if (isMatched) {
+          facultySlots.push({
+            day: ott.day,
+            periodNumber: slot.periodNumber || 1,
+            timeSlot: slot.displayTime || slot.timeSlot || `${slot.startTime} - ${slot.endTime}`,
+            startTime: slot.startTime,
+            endTime: slot.endTime,
+            department: ott.department,
+            year: ott.year || (ott.semester ? Math.ceil(ott.semester / 2) : 1),
+            semester: ott.semester,
+            section: ott.section,
+            subjectCode: slot.subjectCode || '',
+            subjectName: slot.subjectName || 'Subject',
+            room: slot.room || '',
+            type: slot.type || 'Theory'
+          });
+        }
+      }
+    }
+
+    res.status(200).json({ schedule: facultySlots });
+  } catch (err) {
+    console.error('getFacultySchedule error:', err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+module.exports = { getTimetable, addSlot, updateSlot, deleteSlot, uploadTimetable, getFacultySchedule };

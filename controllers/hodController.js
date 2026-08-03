@@ -2064,6 +2064,144 @@ const bulkImportSubjects = async (req, res) => {
   }
 };
 
+const getAllCollegeFaculty = async (req, res) => {
+  try {
+    const collegeCode = req.user.collegeCode.toUpperCase();
+    const facultyList = await User.find(
+      { collegeCode, role: 'faculty' },
+      { fullName: 1, email: 1, employeeId: 1, assignedDepartment: 1 }
+    ).sort({ assignedDepartment: 1, fullName: 1 });
+
+    res.status(200).json(facultyList);
+  } catch (err) {
+    console.error('getAllCollegeFaculty error:', err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// GET /api/hod/timetable/analytics — Comprehensive Timetable Analytics & Utilization Dashboard
+const getTimetableAnalytics = async (req, res) => {
+  try {
+    const department = req.user.assignedDepartment.toUpperCase();
+    const collegeCode = req.user.collegeCode.toUpperCase();
+
+    const timetables = await Timetable.find({ department, collegeCode });
+    const allFaculty = await User.find({ collegeCode, role: 'faculty', assignedDepartment: department });
+    const allSubjects = await Subject.find({ collegeCode, department });
+
+    let totalSlots = 0;
+    const assignedFacultyIds = new Set();
+    const roomBookingMap = {};
+    const subjectHoursMap = {};
+
+    allSubjects.forEach(s => {
+      subjectHoursMap[s.subjectCode] = {
+        name: s.name,
+        requiredHours: s.credits ? s.credits + 1 : 4,
+        assignedHours: 0
+      };
+    });
+
+    for (const tt of timetables) {
+      for (const slot of tt.slots) {
+        if (!slot.startTime || !slot.endTime) continue;
+        totalSlots++;
+
+        if (slot.facultyId || slot.matchedFacultyId) {
+          assignedFacultyIds.add((slot.facultyId || slot.matchedFacultyId).toString());
+        }
+
+        if (slot.room) {
+          const roomKey = slot.room.trim().toUpperCase();
+          roomBookingMap[roomKey] = (roomBookingMap[roomKey] || 0) + 1;
+        }
+
+        if (slot.subjectCode && subjectHoursMap[slot.subjectCode]) {
+          subjectHoursMap[slot.subjectCode].assignedHours += 1;
+        }
+      }
+    }
+
+    const totalFacultyCount = allFaculty.length || 1;
+    const facultyUtilization = Math.round((assignedFacultyIds.size / totalFacultyCount) * 100);
+
+    const busyClassrooms = Object.entries(roomBookingMap)
+      .map(([room, count]) => ({ room, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
+    const roomUtilization = Math.min(100, Math.round((Object.keys(roomBookingMap).length / 10) * 100));
+
+    const subjectHoursValidation = Object.entries(subjectHoursMap).map(([code, info]) => {
+      const remaining = Math.max(0, info.requiredHours - info.assignedHours);
+      const extra = Math.max(0, info.assignedHours - info.requiredHours);
+      return {
+        subjectCode: code,
+        name: info.name,
+        requiredHours: info.requiredHours,
+        assignedHours: info.assignedHours,
+        status: remaining > 0 ? `Remaining Hours : ${remaining}` : (extra > 0 ? `Extra Hours Assigned (+${extra})` : 'Optimal')
+      };
+    });
+
+    res.status(200).json({
+      department,
+      totalTimetables: timetables.length,
+      totalSlots,
+      facultyUtilization: `${facultyUtilization}%`,
+      roomUtilization: `${roomUtilization}%`,
+      freePeriods: Math.max(0, 42 - totalSlots),
+      busyClassrooms,
+      subjectHoursValidation
+    });
+  } catch (err) {
+    console.error('getTimetableAnalytics error:', err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// POST /api/hod/timetable/restore-version — Restore a previous timetable version
+const restoreTimetableVersion = async (req, res) => {
+  try {
+    const { year, section, version } = req.body;
+    const department = req.user.assignedDepartment.toUpperCase();
+    const collegeCode = req.user.collegeCode.toUpperCase();
+
+    const timetables = await Timetable.find({ department, collegeCode, year: Number(year), section: section.toUpperCase() });
+    if (!timetables || timetables.length === 0) {
+      return res.status(404).json({ message: 'No timetable found for this section.' });
+    }
+
+    let restoredCount = 0;
+    for (const tt of timetables) {
+      if (tt.previousVersions && tt.previousVersions.length > 0) {
+        const targetVer = tt.previousVersions.find(v => v.version === Number(version));
+        if (targetVer && targetVer.slots) {
+          tt.slots = targetVer.slots;
+          tt.version = Number(version);
+          await tt.save();
+          restoredCount++;
+        }
+      }
+    }
+
+    await logAction(req.user._id, 'hod', collegeCode, department, `RESTORED_TIMETABLE_VERSION: Year ${year}-${section} to Version ${version}`, req);
+
+    // Socket.io sync
+    const io = req.app.get('io');
+    if (io) {
+      const sectionRoom = `${department}_${Number(year) * 2 - 1}_${section.toUpperCase()}`;
+      io.to(sectionRoom).emit('timetable_updated', { department, year, section });
+      io.to(collegeCode).emit('timetable_updated', { department, year, section });
+    }
+
+    res.status(200).json({ message: `Successfully restored timetable for Year ${year}-${section} to Version ${version}.`, restoredCount });
+  } catch (err) {
+    console.error('restoreTimetableVersion error:', err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
 module.exports = {
   getDashboardStats,
   // Attendance monitoring
@@ -2074,6 +2212,8 @@ module.exports = {
   // Timetable
   saveTimetable,
   getTimetables,
+  getTimetableAnalytics,
+  restoreTimetableVersion,
   // Leaves
   getLeaveRequests,
   recommendLeave,
@@ -2098,6 +2238,7 @@ module.exports = {
   updateFaculty,
   deleteFaculty,
   updateFacultyAssignments,
+  getAllCollegeFaculty,
   // Subjects
   getDepartmentSubjects,
   createDepartmentSubject,
